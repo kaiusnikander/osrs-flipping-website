@@ -19,6 +19,22 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 The app runs at [http://localhost:3000](http://localhost:3000), and the starter API is available at `GET /api/items`.
 
+## Run with Docker
+
+Install and start Docker Desktop, then run:
+
+```bash
+docker compose up --build
+```
+
+Open [http://localhost:3000](http://localhost:3000). The container creates the SQLite database, applies the Prisma schema, and seeds the sample items on startup. Stop it with `Ctrl+C`, or run `docker compose down` from another terminal.
+
+The database is stored in the `osrs_data` Docker volume. To delete the database and seed it from scratch:
+
+```bash
+docker compose down -v
+```
+
 ## Project map
 
 - `src/app/page.tsx`: dashboard screen and temporary presentation data
