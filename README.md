@@ -9,10 +9,15 @@ Install and initialize the local database:
 ```bash
 npm install
 copy .env.example .env
-npm run db:generate
-npm run db:push
+npm run db:migrate
 npm run db:seed
 npm run dev
+```
+
+When the Prisma schema changes, create a named migration with:
+
+```bash
+npm run db:migrate -- --name describe-your-change
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
