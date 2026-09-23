@@ -28,7 +28,7 @@ export const GET = async () => {
   const items = await db.item.findMany({ orderBy: { volume: "desc" } });
 
   try {
-    const [latestResponse, fiveMinuteResponse] = await Promise.all([
+    const [latestResponse, fiveMinuteResponse, mappingResponse] = await Promise.all([
       fetch(`${PRICES_API}/latest`, {
         headers: { "User-Agent": USER_AGENT },
         next: { revalidate: 300 },
@@ -37,9 +37,13 @@ export const GET = async () => {
         headers: { "User-Agent": USER_AGENT },
         next: { revalidate: 300 },
       }),
+      fetch(`${PRICES_API}/mapping`, {
+        headers: { "User-Agent": USER_AGENT },
+        next: { revalidate: 300 },
+      }),
     ]);
 
-    if (!latestResponse.ok || !fiveMinuteResponse.ok) {
+    if (!latestResponse.ok || !fiveMinuteResponse.ok || !mappingResponse.ok) {
       throw new Error("RuneScape price API returned an error");
     }
 
@@ -49,6 +53,8 @@ export const GET = async () => {
     const fiveMinute = (await fiveMinuteResponse.json()) as {
       data: Record<string, FiveMinutePrice>;
     };
+    const mapping = (await mappingResponse.json()) as Array<{ id: number; limit?: number }>;
+    const limits = Object.fromEntries(mapping.map((entry) => [String(entry.id), entry.limit ?? 0]));
 
     const liveItems = items.map((item: DatabaseItem) => {
       const current = latest.data[String(item.id)];
@@ -58,12 +64,14 @@ export const GET = async () => {
       const volume = recent
         ? ((recent.highPriceVolume ?? 0) + (recent.lowPriceVolume ?? 0)) * 288
         : item.volume;
+      const buyLimit = Number(limits[String(item.id)] ?? 0);
 
       return {
         ...item,
         buyPrice,
         sellPrice,
         volume,
+        buyLimit,
         updatedAt: current?.highTime || current?.lowTime
           ? new Date(Math.max(current.highTime ?? 0, current.lowTime ?? 0) * 1000)
           : item.updatedAt,
