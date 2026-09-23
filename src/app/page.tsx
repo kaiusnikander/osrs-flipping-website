@@ -51,18 +51,61 @@ const PriceChart = ({ points }: { points: PricePoint[] }) => {
     const x = padding + (index / Math.max(points.length - 1, 1)) * (width - padding * 2);
     const y = height - padding - ((value - minimum) / range) * (height - padding * 2);
 
-    return `${x},${y}`;
+    return {
+      x,
+      y,
+    };
   };
 
-  const highPoints = points
-    .map((point, index) => (point.avgHighPrice === null ? null : toPoint(point.avgHighPrice, index)))
+  const chartPoints = points.map((point, index) => ({
+    timestamp: point.timestamp,
+    high: point.avgHighPrice !== null ? toPoint(point.avgHighPrice, index) : null,
+    low: point.avgLowPrice !== null ? toPoint(point.avgLowPrice, index) : null,
+    highPrice: point.avgHighPrice,
+    lowPrice: point.avgLowPrice,
+  }));
+
+  const highPoints = chartPoints
+    .map((point) => (point.high ? `${point.high.x},${point.high.y}` : null))
     .filter(Boolean)
     .join(" ");
 
-  const lowPoints = points
-    .map((point, index) => (point.avgLowPrice === null ? null : toPoint(point.avgLowPrice, index)))
+  const lowPoints = chartPoints
+    .map((point) => (point.low ? `${point.low.x},${point.low.y}` : null))
     .filter(Boolean)
     .join(" ");
+
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  const hoveredPoint = hoveredIndex === null ? null : chartPoints[hoveredIndex];
+
+  const tooltipStyle = hoveredPoint
+    ? {
+        left: `${Math.min(Math.max((hoveredPoint.high?.x ?? hoveredPoint.low?.x ?? 0) / width * 100, 10), 90)}%`,
+        top: `${Math.max((hoveredPoint.high?.y ?? hoveredPoint.low?.y ?? 0) / height * 100 - 12, 8)}%`,
+      }
+    : undefined;
+
+  const handleChartHover = (event: React.MouseEvent<SVGSVGElement>) => {
+    const svg = event.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const pointerX = ((event.clientX - rect.left) / rect.width) * width;
+
+    let nearestIndex = 0;
+    let smallestDistance = Number.POSITIVE_INFINITY;
+
+    chartPoints.forEach((point, index) => {
+      const x = point.high?.x ?? point.low?.x ?? 0;
+      const distance = Math.abs(x - pointerX);
+
+      if (distance < smallestDistance) {
+        smallestDistance = distance;
+        nearestIndex = index;
+      }
+    });
+
+    setHoveredIndex(nearestIndex);
+  };
 
   return (
     <div className="price-chart" aria-label="Six hour buy and sell price graph">
@@ -70,20 +113,75 @@ const PriceChart = ({ points }: { points: PricePoint[] }) => {
         <span><i className="legend-high" /> Instant buy</span>
         <span><i className="legend-low" /> Instant sell</span>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} role="img">
-        {[0, 1, 2, 3, 4].map((line) => (
-          <line
-            key={line}
-            x1={padding}
-            x2={width - padding}
-            y1={padding + line * ((height - padding * 2) / 4)}
-            y2={padding + line * ((height - padding * 2) / 4)}
-            className="chart-grid"
-          />
-        ))}
-        <polyline points={highPoints} className="chart-high" />
-        <polyline points={lowPoints} className="chart-low" />
-      </svg>
+      <div style={{ position: "relative" }}>
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          style={{ width: "100%", display: "block" }}
+          onMouseMove={handleChartHover}
+          onMouseLeave={() => setHoveredIndex(null)}
+        >
+          {[0, 1, 2, 3, 4].map((line) => (
+            <line
+              key={line}
+              x1={padding}
+              x2={width - padding}
+              y1={padding + line * ((height - padding * 2) / 4)}
+              y2={padding + line * ((height - padding * 2) / 4)}
+              className="chart-grid"
+            />
+          ))}
+          <polyline points={highPoints} className="chart-high" />
+          <polyline points={lowPoints} className="chart-low" />
+          <rect x={padding} y={0} width={width - padding * 2} height={height} fill="transparent" />
+          {chartPoints.map((point, index) => (
+            <g key={point.timestamp}>
+              {point.high && (
+                <circle
+                  cx={point.high.x}
+                  cy={point.high.y}
+                  r={hoveredIndex === index ? 5 : 0}
+                  fill="#6ae6b8"
+                  opacity={hoveredIndex === index ? 1 : 0}
+                />
+              )}
+              {point.low && (
+                <circle
+                  cx={point.low.x}
+                  cy={point.low.y}
+                  r={hoveredIndex === index ? 5 : 0}
+                  fill="#55d0ff"
+                  opacity={hoveredIndex === index ? 1 : 0}
+                />
+              )}
+            </g>
+          ))}
+        </svg>
+
+        {hoveredPoint && (
+          <div
+            style={{
+              position: "absolute",
+              transform: "translate(-50%, -100%)",
+              background: "rgba(8, 24, 22, 0.94)",
+              color: "#e6f3ef",
+              border: "1px solid rgba(118, 200, 175, 0.5)",
+              borderRadius: 4,
+              padding: "6px 8px",
+              fontSize: 12,
+              lineHeight: 1.4,
+              pointerEvents: "none",
+              whiteSpace: "nowrap",
+              boxShadow: "0 8px 18px rgba(0,0,0,0.25)",
+              ...tooltipStyle,
+            }}
+          >
+            <div>{new Date(hoveredPoint.timestamp * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+            <div>Buy: {hoveredPoint.highPrice !== null ? formatGp(hoveredPoint.highPrice) : "—"}</div>
+            <div>Sell: {hoveredPoint.lowPrice !== null ? formatGp(hoveredPoint.lowPrice) : "—"}</div>
+          </div>
+        )}
+      </div>
       <div className="price-chart-axis">
         <span>
           {points.length
@@ -239,7 +337,14 @@ const Home = () => {
           </div>
         </div>
 
-        {selectedItem && <PriceChart points={pricePoints} />}
+        {selectedItem && (
+          <>
+            <div style={{ margin: "0 0 8px", color: "#e7f5ef", fontSize: 14, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              {selectedItem.name} · 6 hour price history
+            </div>
+            <PriceChart points={pricePoints} />
+          </>
+        )}
 
         <div className="table-wrap">
           <table>
